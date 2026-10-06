@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#c9a227">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
-<title>NoteStudent v6</title>
+<title>NoteStudent v7</title>
 <style>
 :root{--gold:#c9a227;--gold2:#f4d879;--dark:#252525;--light:#f5f4ef;--card:#fff;--green:#166534;--red:#b91c1c;--blue:#1d4ed8;--gray:#e5e7eb}
 *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(#f6f2e5,#eee);color:#222}
@@ -26,7 +26,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccc;border-radiu
 </style>
 </head>
 <body>
-<header><h1>NoteStudent v6</h1><p>Conferencias multidioma · Audio original · Transcripción local sin costo de API</p></header>
+<header><h1>NoteStudent v7</h1><p>Conferencias multidioma · Audio original · Transcripción local mejorada · sin costo de API</p></header>
 
 <div class="wrap">
 <div class="tabs">
@@ -86,7 +86,8 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccc;border-radiu
 <label>Duración de segmentos</label>
 <select id="segmentMinutes">
 <option value="1">1 minuto</option>
-<option value="3" selected>3 minutos</option>
+<option value="2" selected>2 minutos</option>
+<option value="3">3 minutos</option>
 <option value="5">5 minutos</option>
 <option value="10">10 minutos</option>
 </select>
@@ -104,8 +105,8 @@ input,textarea,select{width:100%;padding:11px;border:1px solid #ccc;border-radiu
 <h2>Transcribir conferencia</h2>
 <label>Idioma hablado en la conferencia</label>
 <select id="sourceLang">
-<option value="auto" selected>Detectar automáticamente</option>
-<option value="es">Español</option>
+<option value="es" selected>Español</option>
+<option value="auto">Detectar automáticamente</option>
 <option value="en">Inglés</option>
 <option value="fr">Francés</option>
 <option value="de">Alemán</option>
@@ -155,7 +156,7 @@ window.$=$;
 window.show=function(id){document.querySelectorAll('.section').forEach(x=>x.classList.add('hidden'));$(id).classList.remove('hidden');if(id==='library')renderLibrary()}
 function cfg(){try{return JSON.parse(localStorage.getItem(CFG)||'{}')}catch{return{}}}
 window.saveSettings=function(){localStorage.setItem(CFG,JSON.stringify({segmentMinutes:$('segmentMinutes').value}));$('settingsStatus').textContent='Configuración guardada.'}
-function loadSettings(){const c=cfg();$('segmentMinutes').value=c.segmentMinutes||'3'}
+function loadSettings(){const c=cfg();$('segmentMinutes').value=c.segmentMinutes||'2'}
 function fmt(ms){let s=Math.floor(ms/1000),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60),x=s%60;return [h,m,x].map(v=>String(v).padStart(2,'0')).join(':')}
 
 window.startRecording=async function(){
@@ -169,7 +170,7 @@ window.startRecording=async function(){
   recorder.onstop=()=>{if(chunks.length){segmentBlobs.push(new Blob(chunks,{type:currentMime}));chunks=[];renderSegments()}};
   recorder.start();started=Date.now();pausedAt=null;pausedTotal=0;
   timerTick=setInterval(()=>{$('timer').textContent=fmt((pausedAt||Date.now())-started-pausedTotal)},250);
-  let mins=parseInt($('segmentMinutes').value||'3',10);
+  let mins=parseInt($('segmentMinutes').value||'2',10);
   segmentTimer=setInterval(rotateSegment,mins*60*1000);
   $('start').classList.add('hidden');$('pause').classList.remove('hidden');$('stop').classList.remove('hidden');
   $('recordStatus').textContent='Grabando audio original. Los silencios NO detienen la grabación.';
@@ -204,11 +205,11 @@ window.closeLanguageDialog=function(){$('langModal').classList.add('hidden')}
 
 async function getTranscriber(){
   if(transcriber)return transcriber;
-  $('transcribeStatus').textContent='Cargando modelo local de transcripción. La primera vez puede tardar varios minutos...';
+  $('transcribeStatus').textContent='Cargando Whisper Base multilingüe. La primera vez puede tardar varios minutos...';
   const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
   mod.env.allowLocalModels = false;
   mod.env.useBrowserCache = true;
-  transcriber = await mod.pipeline('automatic-speech-recognition','onnx-community/whisper-tiny',{dtype:'q8'});
+  transcriber = await mod.pipeline('automatic-speech-recognition','onnx-community/whisper-base',{dtype:'q8'});
   return transcriber;
 }
 
@@ -235,6 +236,26 @@ function mergeText(full,next){
   const a=full.split(/\s+/),b=next.split(/\s+/);let best=0,max=Math.min(60,a.length,b.length);
   for(let n=3;n<=max;n++){if(normalize(a.slice(-n).join(' '))===normalize(b.slice(0,n).join(' ')))best=n}
   return (full+' '+b.slice(best).join(' ')).replace(/\s+/g,' ').trim();
+}
+
+
+function cleanHallucinations(text){
+  let words=String(text||'').replace(/\s+/g,' ').trim().split(' '),out=[],prev='',run=0;
+  for(const w of words){const n=normalize(w);if(n&&n===prev){run++;if(run>=3)continue}else{prev=n;run=0}out.push(w)}
+  return out.join(' ').replace(/\b((?:\S+\s+){1,5}\S+)(?:\s+\1){2,}/gi,'$1').trim();
+}
+function suspiciousText(text){
+  const t=normalize(text); if(!t)return {bad:true,reason:'Sin texto'};
+  const words=t.split(/\s+/); if(words.length<2)return {bad:true,reason:'Texto demasiado corto'};
+  let run=1,maxRun=1; for(let i=1;i<words.length;i++){if(words[i]===words[i-1]){run++;maxRun=Math.max(maxRun,run)}else run=1}
+  if(maxRun>=5)return {bad:true,reason:'Repetición excesiva'};
+  if(words.length>=20 && new Set(words).size/words.length<0.18)return {bad:true,reason:'Resultado muy repetitivo'};
+  return {bad:false,reason:''};
+}
+function silenceRatio(data){
+  if(!data.length)return 1; let quiet=0,total=0,step=800;
+  for(let i=0;i<data.length;i+=step){let e=0,n=Math.min(step,data.length-i);for(let j=0;j<n;j++){let v=data[i+j];e+=v*v}if(Math.sqrt(e/n)<0.006)quiet++;total++}
+  return quiet/Math.max(1,total);
 }
 
 async function maybeTranslate(text,source,target){
@@ -266,11 +287,22 @@ window.beginTranscription=async function(){
     for(let i=0;i<segmentBlobs.length;i++){
       $('segstatus'+i).textContent='Transcribiendo...';
       const audio=await blobToAudioData(segmentBlobs[i]);
-      const opts={chunk_length_s:25,stride_length_s:4,return_timestamps:false};
+      if(silenceRatio(audio)>0.92){
+        $('segstatus'+i).innerHTML='<span class="warn">Segmento mayormente silencioso; omitido.</span>';
+        $('progressBar').style.width=Math.round((i+1)/segmentBlobs.length*100)+'%';
+        continue;
+      }
+      const opts={chunk_length_s:20,stride_length_s:3,return_timestamps:false,task:'transcribe'};
       if(source!=='auto')opts.language=source;
       const out=await pipe(audio,opts);
-      full=mergeText(full,out.text||'');
-      $('segstatus'+i).innerHTML='<span class="ok">✓ Transcrito</span>';
+      const cleaned=cleanHallucinations(out.text||'');
+      const check=suspiciousText(cleaned);
+      if(check.bad){
+        $('segstatus'+i).innerHTML='<span class="bad">⚠ Transcripción dudosa: '+check.reason+'.</span>';
+      }else{
+        full=mergeText(full,cleaned);
+        $('segstatus'+i).innerHTML='<span class="ok">✓ Transcrito</span>';
+      }
       $('progressBar').style.width=Math.round((i+1)/segmentBlobs.length*100)+'%';
     }
     let finalText=full;
@@ -280,7 +312,7 @@ window.beginTranscription=async function(){
     $('resultCard').classList.remove('hidden');
     $('transcribeStatus').textContent=translated.translated
       ?'Transcripción y traducción terminadas.'
-      :(target!=='same'?'Transcripción terminada. Este navegador no pudo traducir localmente al idioma elegido; se conserva el texto en el idioma original.':'Transcripción terminada.');
+      :(target!=='same'?'Transcripción terminada. Este navegador no pudo traducir localmente al idioma elegido; se conserva el texto en el idioma original.':'Transcripción terminada. Los segmentos repetitivos o dudosos fueron omitidos para evitar resultados como 3, 3, 3….');
     $('resultCard').scrollIntoView({behavior:'smooth'});
   }catch(e){
     $('transcribeStatus').textContent='No se pudo completar la transcripción local en este dispositivo: '+(e?.message||e)+'. El audio original permanece disponible para descargar.';
