@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#c9a227">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>NoteStudent v6</title>
+<style>
+:root{--gold:#c9a227;--gold2:#f4d879;--dark:#252525;--light:#f5f4ef;--card:#fff;--green:#166534;--red:#b91c1c;--blue:#1d4ed8;--gray:#e5e7eb}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(#f6f2e5,#eee);color:#222}
+header{position:sticky;top:0;z-index:10;background:linear-gradient(135deg,#222,#444);color:#fff;border-bottom:4px solid var(--gold);padding:14px}
+h1{margin:0;color:var(--gold2);font-size:24px}header p{margin:4px 0 0;font-size:13px}
+.wrap{max-width:1000px;margin:auto;padding:12px}.tabs,.actions{display:flex;gap:8px;flex-wrap:wrap}.tabs{margin-bottom:12px}
+button{border:0;border-radius:10px;padding:11px 14px;font-weight:700;cursor:pointer}.primary{background:var(--gold)}.dark{background:#444;color:#fff}.green{background:var(--green);color:#fff}.red{background:var(--red);color:#fff}.blue{background:var(--blue);color:#fff}.ghost{background:var(--gray)}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:0 4px 16px #0002}.hidden{display:none!important}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}label{display:block;font-size:13px;font-weight:700;margin:8px 0 5px}
+input,textarea,select{width:100%;padding:11px;border:1px solid #ccc;border-radius:9px;font-size:16px;background:white}textarea{min-height:180px;resize:vertical}
+.status{margin-top:10px;padding:9px;border-radius:8px;background:#f3f4f6;font-size:13px}.timer{text-align:center;font-size:36px;font-weight:800;margin:12px 0}.small{font-size:12px;color:#666}
+.segment{background:#fafafa;border-left:4px solid var(--gold);padding:10px;margin:8px 0;border-radius:9px}.ok{color:#166534}.bad{color:#b91c1c}.warn{color:#92400e}
+.progress{height:14px;background:#eee;border-radius:999px;overflow:hidden;margin:8px 0}.progress>div{height:100%;width:0;background:var(--gold);transition:width .2s}audio{width:100%}
+.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:16px;z-index:100}.modalbox{background:#fff;border-radius:16px;padding:18px;max-width:560px;width:100%;max-height:90vh;overflow:auto}
+.notice{background:#fff8dc;border-left:4px solid var(--gold);padding:10px;border-radius:8px;margin:10px 0}
+@media(max-width:680px){.grid{grid-template-columns:1fr}button{flex:1}}
+</style>
+</head>
+<body>
+<header><h1>NoteStudent v6</h1><p>Conferencias multidioma · Audio original · Transcripción local sin costo de API</p></header>
+
+<div class="wrap">
+<div class="tabs">
+<button class="primary" onclick="show('record')">Grabar conferencia</button>
+<button class="dark" onclick="show('library')">Biblioteca</button>
+<button class="ghost" onclick="show('settings')">Configuración</button>
+</div>
+
+<section id="record" class="section">
+<div class="card">
+<h2>Nueva conferencia</h2>
+<div class="grid">
+<div><label>Título</label><input id="title" placeholder="Ej. Conferencia de economía"></div>
+<div><label>Materia</label><input id="subject" placeholder="Ej. Economía"></div>
+</div>
+<label>Notas</label><input id="notes" placeholder="Profesor, lugar, tema...">
+<div class="timer" id="timer">00:00:00</div>
+<div class="actions">
+<button id="start" class="green" onclick="startRecording()">▶️ Iniciar</button>
+<button id="pause" class="ghost hidden" onclick="togglePause()">⏸️ Pausar</button>
+<button id="stop" class="red hidden" onclick="stopRecording()">⏹️ Finalizar</button>
+</div>
+<div id="recordStatus" class="status">La grabación conserva el audio original sin importar el idioma.</div>
+</div>
+
+<div class="card">
+<h3>Audio original</h3>
+<div id="segments"><div class="small">Aún no hay audio.</div></div>
+<div class="progress"><div id="progressBar"></div></div>
+<div id="transcribeStatus" class="status">Al finalizar, NoteStudent te preguntará en qué idioma quieres el texto.</div>
+<div class="actions">
+<button id="transcribeBtn" class="primary" disabled onclick="openLanguageDialog()">📝 Transcribir</button>
+<button id="downloadBtn" class="ghost" disabled onclick="downloadAudio()">⬇️ Descargar audios</button>
+</div>
+</div>
+
+<div id="resultCard" class="card hidden">
+<h3>Texto completo de la conferencia</h3>
+<textarea id="transcript" placeholder="Aquí aparecerá el texto completo..."></textarea>
+<div class="actions">
+<button class="green" onclick="saveConference()">💾 Guardar conferencia</button>
+<button class="ghost" onclick="exportTxt()">⬇️ TXT</button>
+<button class="ghost" onclick="copyText()">📋 Copiar</button>
+</div>
+<div id="saveStatus" class="status">El texto queda guardado localmente en este dispositivo.</div>
+</div>
+</section>
+
+<section id="library" class="section hidden">
+<div class="card"><h2>Biblioteca</h2><input id="search" placeholder="Buscar por título, materia o texto..." oninput="renderLibrary()"></div>
+<div id="libraryList"></div>
+</section>
+
+<section id="settings" class="section hidden">
+<div class="card">
+<h2>Configuración</h2>
+<label>Duración de segmentos</label>
+<select id="segmentMinutes">
+<option value="1">1 minuto</option>
+<option value="3" selected>3 minutos</option>
+<option value="5">5 minutos</option>
+<option value="10">10 minutos</option>
+</select>
+<div class="notice">
+<b>Modo gratuito:</b> la transcripción se intenta hacer dentro del navegador usando un modelo local. La primera vez puede descargar un modelo grande y puede tardar varios minutos. En teléfonos con poca memoria puede no completarse.
+</div>
+<div class="actions"><button class="primary" onclick="saveSettings()">Guardar configuración</button></div>
+<div id="settingsStatus" class="status">No usa claves de API ni servidor de pago.</div>
+</div>
+</section>
+</div>
+
+<div id="langModal" class="modal hidden">
+<div class="modalbox">
+<h2>Transcribir conferencia</h2>
+<label>Idioma hablado en la conferencia</label>
+<select id="sourceLang">
+<option value="auto" selected>Detectar automáticamente</option>
+<option value="es">Español</option>
+<option value="en">Inglés</option>
+<option value="fr">Francés</option>
+<option value="de">Alemán</option>
+<option value="it">Italiano</option>
+<option value="pt">Portugués</option>
+<option value="ja">Japonés</option>
+<option value="ko">Coreano</option>
+<option value="zh">Chino</option>
+<option value="ar">Árabe</option>
+<option value="ru">Ruso</option>
+</select>
+
+<label>Idioma deseado para el texto</label>
+<select id="targetLang">
+<option value="same" selected>Mismo idioma de la conferencia</option>
+<option value="es">Español</option>
+<option value="en">Inglés</option>
+<option value="fr">Francés</option>
+<option value="de">Alemán</option>
+<option value="it">Italiano</option>
+<option value="pt">Portugués</option>
+<option value="ja">Japonés</option>
+<option value="ko">Coreano</option>
+<option value="zh">Chino</option>
+<option value="ar">Árabe</option>
+<option value="ru">Ruso</option>
+</select>
+
+<div class="notice">
+La transcripción local es gratuita. La traducción a otro idioma se hará solo si el navegador dispone de traducción local compatible; si no, NoteStudent conservará la transcripción en el idioma original y te avisará.
+</div>
+<div class="actions">
+<button class="primary" onclick="beginTranscription()">Comenzar</button>
+<button class="ghost" onclick="closeLanguageDialog()">Cancelar</button>
+</div>
+</div>
+</div>
+
+<script type="module">
+const DB='notestudent_v6_library', CFG='notestudent_v6_cfg';
+let stream=null, recorder=null, segmentBlobs=[], chunks=[], segmentTimer=null, started=null, pausedAt=null, pausedTotal=0, timerTick=null, currentMime='audio/webm';
+let transcriber=null;
+
+const $=id=>document.getElementById(id);
+window.$=$;
+
+window.show=function(id){document.querySelectorAll('.section').forEach(x=>x.classList.add('hidden'));$(id).classList.remove('hidden');if(id==='library')renderLibrary()}
+function cfg(){try{return JSON.parse(localStorage.getItem(CFG)||'{}')}catch{return{}}}
+window.saveSettings=function(){localStorage.setItem(CFG,JSON.stringify({segmentMinutes:$('segmentMinutes').value}));$('settingsStatus').textContent='Configuración guardada.'}
+function loadSettings(){const c=cfg();$('segmentMinutes').value=c.segmentMinutes||'3'}
+function fmt(ms){let s=Math.floor(ms/1000),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60),x=s%60;return [h,m,x].map(v=>String(v).padStart(2,'0')).join(':')}
+
+window.startRecording=async function(){
+  if(!window.isSecureContext){$('recordStatus').textContent='Necesitas abrir la aplicación por HTTPS para usar el micrófono.';return}
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})}
+  catch(e){$('recordStatus').textContent='No se pudo acceder al micrófono. Revisa permisos de Chrome.';return}
+  currentMime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
+  segmentBlobs=[];chunks=[];renderSegments();
+  recorder=new MediaRecorder(stream,{mimeType:currentMime});
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  recorder.onstop=()=>{if(chunks.length){segmentBlobs.push(new Blob(chunks,{type:currentMime}));chunks=[];renderSegments()}};
+  recorder.start();started=Date.now();pausedAt=null;pausedTotal=0;
+  timerTick=setInterval(()=>{$('timer').textContent=fmt((pausedAt||Date.now())-started-pausedTotal)},250);
+  let mins=parseInt($('segmentMinutes').value||'3',10);
+  segmentTimer=setInterval(rotateSegment,mins*60*1000);
+  $('start').classList.add('hidden');$('pause').classList.remove('hidden');$('stop').classList.remove('hidden');
+  $('recordStatus').textContent='Grabando audio original. Los silencios NO detienen la grabación.';
+}
+function rotateSegment(){
+  if(!recorder||recorder.state!=='recording')return;
+  recorder.stop();
+  setTimeout(()=>{if(stream&&stream.active){chunks=[];recorder.start()}},250);
+}
+window.togglePause=function(){
+  if(!recorder)return;
+  if(recorder.state==='recording'){recorder.pause();pausedAt=Date.now();$('pause').textContent='▶️ Reanudar';$('recordStatus').textContent='Pausa manual activa.'}
+  else if(recorder.state==='paused'){pausedTotal+=Date.now()-pausedAt;pausedAt=null;recorder.resume();$('pause').textContent='⏸️ Pausar';$('recordStatus').textContent='Grabación reanudada.'}
+}
+window.stopRecording=function(){
+  clearInterval(segmentTimer);clearInterval(timerTick);
+  if(recorder&&recorder.state!=='inactive')recorder.stop();
+  setTimeout(()=>{
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    $('start').classList.remove('hidden');$('pause').classList.add('hidden');$('stop').classList.add('hidden');$('pause').textContent='⏸️ Pausar';
+    $('recordStatus').textContent='Conferencia finalizada. El audio original quedó preparado.';
+    $('transcribeBtn').disabled=segmentBlobs.length===0;$('downloadBtn').disabled=segmentBlobs.length===0;
+    if(segmentBlobs.length) openLanguageDialog();
+  },350);
+}
+function renderSegments(){
+  if(!segmentBlobs.length){$('segments').innerHTML='<div class="small">Aún no hay audio.</div>';return}
+  $('segments').innerHTML=segmentBlobs.map((b,i)=>`<div class="segment"><b>Segmento ${i+1}</b> · ${(b.size/1024/1024).toFixed(2)} MB<audio controls src="${URL.createObjectURL(b)}"></audio><div id="segstatus${i}" class="small">Pendiente</div></div>`).join('');
+}
+window.openLanguageDialog=function(){$('langModal').classList.remove('hidden')}
+window.closeLanguageDialog=function(){$('langModal').classList.add('hidden')}
+
+async function getTranscriber(){
+  if(transcriber)return transcriber;
+  $('transcribeStatus').textContent='Cargando modelo local de transcripción. La primera vez puede tardar varios minutos...';
+  const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
+  mod.env.allowLocalModels = false;
+  mod.env.useBrowserCache = true;
+  transcriber = await mod.pipeline('automatic-speech-recognition','onnx-community/whisper-tiny',{dtype:'q8'});
+  return transcriber;
+}
+
+async function blobToAudioData(blob){
+  const ab=await blob.arrayBuffer();
+  const ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+  const decoded=await ctx.decodeAudioData(ab.slice(0));
+  const src=decoded.getChannelData(0);
+  let data=src;
+  if(decoded.sampleRate!==16000){
+    const offline=new OfflineAudioContext(1,Math.ceil(decoded.duration*16000),16000);
+    const buf=offline.createBuffer(1,src.length,decoded.sampleRate);
+    buf.copyToChannel(src,0);
+    const source=offline.createBufferSource();source.buffer=buf;source.connect(offline.destination);source.start();
+    const rendered=await offline.startRendering();data=rendered.getChannelData(0);
+  }
+  await ctx.close();
+  return data;
+}
+
+function normalize(s){return s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim()}
+function mergeText(full,next){
+  full=full.trim();next=next.trim();if(!full)return next;if(!next)return full;
+  const a=full.split(/\s+/),b=next.split(/\s+/);let best=0,max=Math.min(60,a.length,b.length);
+  for(let n=3;n<=max;n++){if(normalize(a.slice(-n).join(' '))===normalize(b.slice(0,n).join(' ')))best=n}
+  return (full+' '+b.slice(best).join(' ')).replace(/\s+/g,' ').trim();
+}
+
+async function maybeTranslate(text,source,target){
+  if(target==='same'||!target||source===target)return {text,translated:false};
+  // Try Chrome's local Translator API when present.
+  try{
+    if('Translator' in self){
+      const availability=await Translator.availability({sourceLanguage:source==='auto'?'en':source,targetLanguage:target});
+      if(availability!=='unavailable'){
+        const tr=await Translator.create({sourceLanguage:source==='auto'?'en':source,targetLanguage:target});
+        const out=await tr.translate(text);
+        if(tr.destroy)tr.destroy();
+        return {text:out,translated:true};
+      }
+    }
+  }catch(e){}
+  // Whisper can translate speech to English directly, but here transcription is already done.
+  return {text,translated:false};
+}
+
+window.beginTranscription=async function(){
+  closeLanguageDialog();
+  const source=$('sourceLang').value,target=$('targetLang').value;
+  $('transcribeStatus').textContent='Preparando transcripción local...';
+  $('progressBar').style.width='0%';
+  try{
+    const pipe=await getTranscriber();
+    let full='';
+    for(let i=0;i<segmentBlobs.length;i++){
+      $('segstatus'+i).textContent='Transcribiendo...';
+      const audio=await blobToAudioData(segmentBlobs[i]);
+      const opts={chunk_length_s:25,stride_length_s:4,return_timestamps:false};
+      if(source!=='auto')opts.language=source;
+      const out=await pipe(audio,opts);
+      full=mergeText(full,out.text||'');
+      $('segstatus'+i).innerHTML='<span class="ok">✓ Transcrito</span>';
+      $('progressBar').style.width=Math.round((i+1)/segmentBlobs.length*100)+'%';
+    }
+    let finalText=full;
+    const translated=await maybeTranslate(full,source,target);
+    finalText=translated.text;
+    $('transcript').value=finalText;
+    $('resultCard').classList.remove('hidden');
+    $('transcribeStatus').textContent=translated.translated
+      ?'Transcripción y traducción terminadas.'
+      :(target!=='same'?'Transcripción terminada. Este navegador no pudo traducir localmente al idioma elegido; se conserva el texto en el idioma original.':'Transcripción terminada.');
+    $('resultCard').scrollIntoView({behavior:'smooth'});
+  }catch(e){
+    $('transcribeStatus').textContent='No se pudo completar la transcripción local en este dispositivo: '+(e?.message||e)+'. El audio original permanece disponible para descargar.';
+  }
+}
+
+function downloadBlob(b,n){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+window.downloadAudio=function(){segmentBlobs.forEach((b,i)=>setTimeout(()=>downloadBlob(b,`NoteStudent_audio_original_${i+1}.webm`),i*250))}
+window.exportTxt=function(){const t=$('transcript').value.trim();if(t)downloadBlob(new Blob([t],{type:'text/plain;charset=utf-8'}),($('title').value||'conferencia').replace(/[^\w\-]+/g,'_')+'.txt')}
+window.copyText=async function(){try{await navigator.clipboard.writeText($('transcript').value);$('saveStatus').textContent='Texto copiado.'}catch{$('saveStatus').textContent='No se pudo copiar.'}}
+function db(){try{return JSON.parse(localStorage.getItem(DB)||'[]')}catch{return[]}}
+window.saveConference=function(){
+  const t=$('transcript').value.trim();if(!t){$('saveStatus').textContent='No hay texto para guardar.';return}
+  let x=db();x.unshift({id:Date.now(),title:$('title').value||'Conferencia',subject:$('subject').value,notes:$('notes').value,text:t,date:new Date().toISOString(),duration:$('timer').textContent,sourceLang:$('sourceLang').value,targetLang:$('targetLang').value});
+  localStorage.setItem(DB,JSON.stringify(x));$('saveStatus').textContent='Conferencia y texto guardados localmente.';
+}
+function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+window.renderLibrary=function(){
+  let q=($('search').value||'').toLowerCase(),x=db().filter(v=>!q||[v.title,v.subject,v.text].join(' ').toLowerCase().includes(q));
+  $('libraryList').innerHTML=x.length?x.map(v=>`<div class="card"><h3>${esc(v.title)}</h3><div class="small">${esc(v.subject||'')} · ${new Date(v.date).toLocaleString()} · ${esc(v.duration||'')}</div><p>${esc(v.text.slice(0,1200))}${v.text.length>1200?'…':''}</p><div class="actions"><button class="ghost" onclick="exportSaved(${v.id})">TXT</button><button class="red" onclick="removeSaved(${v.id})">Eliminar</button></div></div>`).join(''):'<div class="card">No hay conferencias guardadas.</div>'
+}
+window.exportSaved=function(id){let v=db().find(x=>x.id===id);if(v)downloadBlob(new Blob([v.text],{type:'text/plain;charset=utf-8'}),(v.title||'conferencia').replace(/[^\w\-]+/g,'_')+'.txt')}
+window.removeSaved=function(id){if(confirm('¿Eliminar?')){localStorage.setItem(DB,JSON.stringify(db().filter(x=>x.id!==id)));renderLibrary()}}
+loadSettings();
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
+</script>
+</body></html>
